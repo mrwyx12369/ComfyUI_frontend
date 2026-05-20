@@ -1,0 +1,139 @@
+import { expect } from '@playwright/test'
+
+import { comfyPageFixture as test } from '@e2e/fixtures/ComfyPage'
+
+test.describe(
+  'Vue Nodes - Delete Key Interaction',
+  { tag: '@vue-nodes' },
+  () => {
+    test('Can select all and delete Vue nodes with Delete key', async ({
+      comfyPage
+    }) => {
+      // Get initial Vue node count
+      await expect
+        .poll(() => comfyPage.vueNodes.getNodeCount())
+        .toBeGreaterThan(0)
+      const initialNodeCount = await comfyPage.vueNodes.getNodeCount()
+
+      // Select all Vue nodes
+      await comfyPage.keyboard.selectAll()
+
+      // Verify all Vue nodes are selected
+      await expect(comfyPage.vueNodes.selectedNodes).toHaveCount(
+        initialNodeCount
+      )
+
+      // Delete with Delete key
+      await comfyPage.vueNodes.deleteSelected()
+
+      // Verify all Vue nodes were deleted
+      await expect.poll(() => comfyPage.vueNodes.getNodeCount()).toBe(0)
+    })
+
+    test('Can select specific Vue node and delete it', async ({
+      comfyPage
+    }) => {
+      // Get initial Vue node count
+      await expect
+        .poll(() => comfyPage.vueNodes.getNodeCount())
+        .toBeGreaterThan(0)
+      const initialNodeCount = await comfyPage.vueNodes.getNodeCount()
+
+      // Get first Vue node ID and select it
+      const nodeIds = await comfyPage.vueNodes.getNodeIds()
+      await comfyPage.vueNodes.selectNode(nodeIds[0])
+
+      // Verify selection
+      await expect(comfyPage.vueNodes.selectedNodes).toHaveCount(1)
+
+      // Delete with Delete key
+      await comfyPage.vueNodes.deleteSelected()
+
+      // Verify one Vue node was deleted
+      await expect
+        .poll(() => comfyPage.vueNodes.getNodeCount())
+        .toBe(initialNodeCount - 1)
+    })
+
+    test('Can select and delete Vue node with Backspace key', async ({
+      comfyPage
+    }) => {
+      const initialNodeCount = await comfyPage.vueNodes.getNodeCount()
+
+      // Select first Vue node
+      const nodeIds = await comfyPage.vueNodes.getNodeIds()
+      await comfyPage.vueNodes.selectNode(nodeIds[0])
+
+      // Delete with Backspace key instead of Delete
+      await comfyPage.vueNodes.deleteSelectedWithBackspace()
+
+      // Verify Vue node was deleted
+      await expect
+        .poll(() => comfyPage.vueNodes.getNodeCount())
+        .toBe(initialNodeCount - 1)
+    })
+
+    test('Delete key does not delete node when typing in Vue node widgets', async ({
+      comfyPage
+    }) => {
+      const initialNodeCount = await comfyPage.nodeOps.getGraphNodesCount()
+
+      // Find a text input widget in a Vue node
+      const textWidget = comfyPage.page
+        .locator('input[type="text"], textarea')
+        .first()
+
+      // Click on text widget to focus it
+      await textWidget.click()
+      await textWidget.fill('test text')
+
+      // Press Delete while focused on widget - should delete text, not node
+      await textWidget.press('Delete')
+
+      // Node count should remain the same
+      await expect
+        .poll(() => comfyPage.nodeOps.getGraphNodesCount())
+        .toBe(initialNodeCount)
+    })
+
+    test('Delete key does not delete node when nothing is selected', async ({
+      comfyPage
+    }) => {
+      // Ensure no Vue nodes are selected
+      await comfyPage.vueNodes.clearSelection()
+      await expect(comfyPage.vueNodes.selectedNodes).toHaveCount(0)
+
+      // Press Delete key - should not crash and should handle gracefully
+      await comfyPage.page.keyboard.press('Delete')
+
+      // Vue node count should remain the same
+      await expect
+        .poll(() => comfyPage.vueNodes.getNodeCount())
+        .toBeGreaterThan(0)
+    })
+
+    test('Can multi-select with Ctrl+click and delete multiple Vue nodes', async ({
+      comfyPage
+    }) => {
+      const initialNodeCount = await comfyPage.vueNodes.getNodeCount()
+
+      // Multi-select first two Vue nodes using Ctrl+click
+      const nodeIds = await comfyPage.vueNodes.getNodeIds()
+      const nodesToSelect = nodeIds.slice(0, 2)
+      await comfyPage.vueNodes.selectNodes(nodesToSelect)
+
+      // Verify expected nodes are selected
+      await expect(comfyPage.vueNodes.selectedNodes).toHaveCount(
+        nodesToSelect.length
+      )
+
+      // Delete selected Vue nodes
+      await comfyPage.vueNodes.deleteSelected()
+
+      // Verify expected nodes were deleted
+      await expect
+        .poll(() => comfyPage.vueNodes.getNodeCount())
+        .toBe(initialNodeCount - nodesToSelect.length)
+    })
+  }
+)

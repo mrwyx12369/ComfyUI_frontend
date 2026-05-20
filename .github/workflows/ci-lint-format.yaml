@@ -1,0 +1,89 @@
+# Description: Linting and code formatting validation for pull requests.
+# Paired with ci-lint-format-queue.yaml - workflow name and job name must
+# match so branch protection resolves a single required check in both the
+# pull_request and merge_group contexts.
+name: 'CI: Lint Format'
+
+on:
+  pull_request:
+    branches-ignore: [wip/*, draft/*, temp/*]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ !github.event.pull_request.head.repo.fork && github.head_ref || github.ref }}
+          token: ${{ !github.event.pull_request.head.repo.fork && secrets.PR_GH_TOKEN || github.token }}
+
+      - name: Setup frontend
+        uses: ./.github/actions/setup-frontend
+
+      - name: Run ESLint with auto-fix
+        run: pnpm lint:fix
+
+      - name: Run Stylelint with auto-fix
+        run: pnpm stylelint:fix
+
+      - name: Run oxfmt with auto-format
+        run: pnpm format
+
+      - name: Check for changes
+        id: verify-changed-files
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit changes
+        if: steps.verify-changed-files.outputs.changed == 'true' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "[automated] Apply ESLint and Oxfmt fixes"
+          git push
+
+      - name: Fail for fork PRs with unfixed lint/format issues
+        if: steps.verify-changed-files.outputs.changed == 'true' && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::error::Linting/formatting issues found. Since this PR is from a fork, auto-fix cannot be applied automatically."
+          echo ""
+          echo "Please run these commands locally and push the changes:"
+          echo "  pnpm lint:fix"
+          echo "  pnpm stylelint:fix"
+          echo "  pnpm format"
+          echo ""
+          echo "Or set up pre-commit hooks to automatically format on every commit:"
+          echo "  pnpm prepare"
+          echo ""
+          echo "See CONTRIBUTING.md for more details."
+          exit 1
+
+      - name: Verify lint and format
+        uses: ./.github/actions/lint-format-verify
+
+      - name: Comment on PR about auto-fix
+        if: steps.verify-changed-files.outputs.changed == 'true' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: actions/github-script@v8
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '## 🔧 Auto-fixes Applied\n\nThis PR has been automatically updated to fix linting and formatting issues.\n\n**⚠️ Important**: Your local branch is now behind. Run `git pull` before making additional changes to avoid conflicts.\n\n### Changes made:\n- ESLint auto-fixes\n- Oxfmt formatting'
+            })

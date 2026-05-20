@@ -1,0 +1,16 @@
+.git
+.github
+.husky
+.nx
+node_modules
+dist
+coverage
+playwright-report
+test-results
+browser_tests/test-results
+.storybook-static
+.DS_Store
+*.log
+.env
+.env.*
+!.env_example

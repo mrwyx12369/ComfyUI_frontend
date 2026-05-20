@@ -1,0 +1,18 @@
+{
+  "recommendations": [
+    "antfu.vite",
+    "bradlc.vscode-tailwindcss",
+    "davidanson.vscode-markdownlint",
+    "dbaeumer.vscode-eslint",
+    "donjayamanne.githistory",
+    "eamodio.gitlens",
+    "github.vscode-pull-request-github",
+    "lokalise.i18n-ally",
+    "ms-playwright.playwright",
+    "oxc.oxc-vscode",
+    "sonarsource.sonarlint-vscode",
+    "vitest.explorer",
+    "vue.volar",
+    "wix.vscode-import-cost"
+  ]
+}

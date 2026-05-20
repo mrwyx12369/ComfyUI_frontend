@@ -1,0 +1,122 @@
+import { expect } from '@playwright/test'
+
+import type { ComfyPage } from '@e2e/fixtures/ComfyPage'
+import { comfyPageFixture as test } from '@e2e/fixtures/ComfyPage'
+import {
+  getPromotedWidgetNames,
+  getPromotedWidgetCountByName
+} from '@e2e/fixtures/utils/promotedWidgets'
+
+test.describe('Vue Nodes Image Preview', { tag: '@vue-nodes' }, () => {
+  async function loadImageOnNode(comfyPage: ComfyPage) {
+    await comfyPage.workflow.loadWorkflow('widgets/load_image_widget')
+
+    const loadImageNode = (
+      await comfyPage.nodeOps.getNodeRefsByType('LoadImage')
+    )[0]
+    const { x, y } = await loadImageNode.getPosition()
+
+    await comfyPage.dragDrop.dragAndDropFile('image64x64.webp', {
+      dropPosition: { x, y }
+    })
+
+    const nodeId = String(loadImageNode.id)
+    const imagePreview = comfyPage.vueNodes
+      .getNodeLocator(nodeId)
+      .locator('.image-preview')
+
+    await expect(imagePreview).toBeVisible()
+    await expect(imagePreview.locator('img')).toBeVisible({ timeout: 30_000 })
+    await expect(imagePreview).toContainText('x')
+
+    return {
+      imagePreview,
+      nodeId
+    }
+  }
+
+  test('opens mask editor from image preview button', async ({ comfyPage }) => {
+    const { imagePreview } = await loadImageOnNode(comfyPage)
+
+    await imagePreview.getByRole('region').hover()
+    await comfyPage.page.getByLabel('Edit or mask image').click()
+
+    await expect(comfyPage.page.locator('.mask-editor-dialog')).toBeVisible()
+  })
+
+  test('shows image context menu options', async ({ comfyPage }) => {
+    const { nodeId } = await loadImageOnNode(comfyPage)
+
+    await comfyPage.vueNodes.selectNode(nodeId)
+    const nodeHeader = comfyPage.vueNodes
+      .getNodeLocator(nodeId)
+      .locator('.lg-node-header')
+    await nodeHeader.click({ button: 'right' })
+
+    const contextMenu = comfyPage.page.locator('.p-contextmenu')
+    await expect(contextMenu).toBeVisible()
+    await expect(contextMenu.getByText('Open Image')).toBeVisible()
+    await expect(contextMenu.getByText('Copy Image')).toBeVisible()
+    await expect(contextMenu.getByText('Save Image')).toBeVisible()
+    await expect(contextMenu.getByText('Open in Mask Editor')).toBeVisible()
+  })
+
+  test(
+    'renders promoted image previews for each subgraph node',
+    { tag: '@screenshot' },
+    async ({ comfyPage }) => {
+      await comfyPage.workflow.loadWorkflow(
+        'subgraphs/subgraph-with-multiple-promoted-previews'
+      )
+
+      const firstSubgraphNode = comfyPage.vueNodes.getNodeLocator('7')
+      const secondSubgraphNode = comfyPage.vueNodes.getNodeLocator('8')
+
+      await expect(firstSubgraphNode).toBeVisible()
+      await expect(secondSubgraphNode).toBeVisible()
+
+      await expect
+        .poll(() => getPromotedWidgetNames(comfyPage, '7'))
+        .toEqual(['$$canvas-image-preview', '$$canvas-image-preview'])
+      await expect
+        .poll(() => getPromotedWidgetNames(comfyPage, '8'))
+        .toEqual(['$$canvas-image-preview'])
+
+      await expect
+        .poll(() =>
+          getPromotedWidgetCountByName(comfyPage, '7', '$$canvas-image-preview')
+        )
+        .toBe(2)
+      await expect
+        .poll(() =>
+          getPromotedWidgetCountByName(comfyPage, '8', '$$canvas-image-preview')
+        )
+        .toBe(1)
+
+      await expect(
+        firstSubgraphNode.locator('.lg-node-widgets')
+      ).not.toContainText('$$canvas-image-preview')
+      await expect(
+        secondSubgraphNode.locator('.lg-node-widgets')
+      ).not.toContainText('$$canvas-image-preview')
+
+      await comfyPage.command.executeCommand('Comfy.Canvas.FitView')
+      await comfyPage.command.executeCommand('Comfy.QueuePrompt')
+
+      const firstPreviewImages = firstSubgraphNode.locator('.image-preview img')
+      const secondPreviewImages =
+        secondSubgraphNode.locator('.image-preview img')
+
+      await expect(firstPreviewImages).toHaveCount(2, { timeout: 30_000 })
+      await expect(secondPreviewImages).toHaveCount(1, { timeout: 30_000 })
+
+      await expect(firstPreviewImages.first()).toBeVisible({ timeout: 30_000 })
+      await expect(firstPreviewImages.nth(1)).toBeVisible({ timeout: 30_000 })
+      await expect(secondPreviewImages.first()).toBeVisible({ timeout: 30_000 })
+
+      await expect(comfyPage.canvas).toHaveScreenshot(
+        'vue-node-multiple-promoted-previews.png'
+      )
+    }
+  )
+})

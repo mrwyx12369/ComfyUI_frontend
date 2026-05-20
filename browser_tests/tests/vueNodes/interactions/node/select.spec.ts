@@ -1,0 +1,88 @@
+import {
+  comfyExpect as expect,
+  comfyPageFixture as test
+} from '@e2e/fixtures/ComfyPage'
+
+test.beforeEach(async ({ comfyPage }) => {
+  await comfyPage.settings.setSetting('Comfy.UseNewMenu', 'Disabled')
+})
+
+test.describe('Vue Node Selection', { tag: '@vue-nodes' }, () => {
+  const modifiers = [
+    { key: 'Control', name: 'ctrl' },
+    { key: 'Shift', name: 'shift' },
+    { key: 'Meta', name: 'meta' }
+  ] as const
+
+  for (const { key: modifier, name } of modifiers) {
+    test(`should allow selecting multiple nodes with ${name}+click`, async ({
+      comfyPage
+    }) => {
+      await comfyPage.page.getByText('Load Checkpoint').click()
+      await expect(comfyPage.vueNodes.selectedNodes).toHaveCount(1)
+
+      await comfyPage.page.getByText('Empty Latent Image').click({
+        modifiers: [modifier]
+      })
+      await expect(comfyPage.vueNodes.selectedNodes).toHaveCount(2)
+
+      await comfyPage.page.getByText('KSampler').click({
+        modifiers: [modifier]
+      })
+      await expect(comfyPage.vueNodes.selectedNodes).toHaveCount(3)
+    })
+
+    test(`should allow de-selecting nodes with ${name}+click`, async ({
+      comfyPage
+    }) => {
+      await comfyPage.page.getByText('Load Checkpoint').click()
+      await expect(comfyPage.vueNodes.selectedNodes).toHaveCount(1)
+
+      await comfyPage.page.getByText('Load Checkpoint').click({
+        modifiers: [modifier]
+      })
+      await expect(comfyPage.vueNodes.selectedNodes).toHaveCount(0)
+    })
+  }
+
+  test('should select all nodes with ctrl+a', async ({ comfyPage }) => {
+    await expect
+      .poll(() => comfyPage.vueNodes.getNodeCount())
+      .toBeGreaterThan(0)
+    const initialCount = await comfyPage.vueNodes.getNodeCount()
+
+    await comfyPage.canvas.press('Control+a')
+
+    await expect(comfyPage.vueNodes.selectedNodes).toHaveCount(initialCount)
+  })
+
+  test('should select pinned node without dragging', async ({ comfyPage }) => {
+    const PIN_HOTKEY = 'p'
+    const PIN_INDICATOR = '[data-testid="node-pin-indicator"]'
+
+    const checkpointNodeHeader = comfyPage.page.getByText('Load Checkpoint')
+    await checkpointNodeHeader.click()
+
+    await comfyPage.page.keyboard.press(PIN_HOTKEY)
+
+    const checkpointNode = comfyPage.vueNodes.getNodeByTitle('Load Checkpoint')
+    const pinIndicator = checkpointNode.locator(PIN_INDICATOR)
+    await expect(pinIndicator).toBeVisible()
+
+    await expect(comfyPage.vueNodes.selectedNodes).toHaveCount(1)
+
+    const initialPos = await checkpointNodeHeader.boundingBox()
+    if (!initialPos) throw new Error('Failed to get header position')
+
+    await comfyPage.canvasOps.dragAndDrop(
+      { x: initialPos.x + 10, y: initialPos.y + 10 },
+      { x: initialPos.x + 100, y: initialPos.y + 100 }
+    )
+
+    await expect
+      .poll(async () => await checkpointNodeHeader.boundingBox())
+      .toEqual(initialPos)
+
+    await expect(comfyPage.vueNodes.selectedNodes).toHaveCount(1)
+  })
+})
